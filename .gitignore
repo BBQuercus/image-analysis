@@ -1,1 +1,4 @@
 .DS_Store
+.venv/
+.ipynb_checkpoints
+induction_macro.py
