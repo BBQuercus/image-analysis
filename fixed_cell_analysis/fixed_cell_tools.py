@@ -1,31 +1,49 @@
-# fixed_cell_tools.py
-# !/usr/bin/env python
-# coding: utf-8
+"""
+Fixed cell analysis
+All necessary functions for basic fixed cell image analysis.
+Part of my master thesis in molecular biology.
+
+Licensed under the MIT License (see LICENSE for details)
+Written by Bastian Eichenberger
+"""
 
 # TODO – make function (img coords to seg)
 
-import glob, os, random, re, sys, math
+import math
+import czifile
+import interaction_factor as IF
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import scipy.ndimage as ndi
-
-from sklearn.cluster import k_means
 from scipy.signal import convolve2d
+
 from scipy import stats
-from skimage import io, feature, filters, segmentation, morphology, measure, draw
+from skimage import io, feature, filters, segmentation, morphology, measure
 
-from czifile import imread
-import interaction_factor as IF
+__all__ = ['get_files', 'sharp', 'import_images',
+            'relabel', 'segment',
+            'extract_mask', 'mirror_edges', 'img_to_blocks', 'scramble',
+            'coloc_image', 'coloc_cellbox', 'coloc_cellmask', 'img2mask',
+            'coloc_IF', 'distance', 'nearest_neighbors',
+            'spots_traditional', 'spots_local_maxima', 'spots_algorithm',
+            'spot_centroid', 'spot_value']
 
-####################
-# File import #
-####################
+
+############################################################
+# File import
+############################################################
+
 def get_files(root, czi=False):
-    '''
-    Returns list of files (either .stk or .czi) and the number of files.
-    Parameters
-    '''
+    """Returns list of files (either .stk or .czi) and the number of files.
+
+    Args:
+        root (dir): Location of files.
+        czi (bool): True if files are .czi.
+
+    Returns:
+        list: All image files in root.
+    """
+    import glob
     if czi:
         files = glob.glob(f'{root}*.czi')
     else:
@@ -34,15 +52,14 @@ def get_files(root, czi=False):
     return files
 
 def sharp(img):
-    '''
-    Returns index of the sharpest slice in an image array of shape z, x, y.
-    Parameters
-    ----------
-    n (arr): The first parameter.
-    Returns
-    ----------
-    bool: The return value. True for success, False otherwise.
-    '''
+    """Returns index of the sharpest slice in an image array of shape z, x, y.
+
+    Args:
+        n (arr): Image array (len(img.shape)) == 3) of which sharpest slice is to be determined.
+
+    Returns:
+        bool: Index of the sharpest slice.
+    """
     sharpness = []
     array = np.asarray(img, dtype=np.int32)
     for i in range(array.shape[0]):
@@ -52,21 +69,20 @@ def sharp(img):
     return sharpness.index(max(sharpness))
 
 def import_images(files, sharp=False, sharp_channel=0, czi=False, order=None):
-    '''
-    Imports files from list of files 
-    Parameters
-    ----------
-    file:
-    sharp:
-    sharp_channel:
-    czi:
-    order:
-    Returns
-    ----------
-    img: nd.array
-    '''
+    """Imports files from list of files.
+
+    Args:
+        files: Image files. For czi a single filename. For others a list of all channels.
+        sharp (bool): If the sharpest slice should be used.
+        sharp_channel (int): Channel to determine the sharpest slice on.
+        czi (bool): If the image is .czi.
+        order (list): Order of channels.
+
+    Returns:
+        img (nd.array): Image array of shape (z, x, y)
+    """
     if czi:
-        img_import = imread(files)
+        img_import = czifile.imread(files)
         # File shape – (1, 3, 30, 2213, 2752, 1)
         if sharp:
             img_sharp = sharp(img_import[0,sharp_channel,:,:,:,0])
@@ -88,9 +104,11 @@ def import_images(files, sharp=False, sharp_channel=0, czi=False, order=None):
         img = [img[i] for i in order]
     return img
 
-####################
-# Segmentation #
-####################
+
+############################################################
+# Segmentation
+############################################################
+
 def relabel(img_seg):
     """Relabels labeled images for a continuous labeling.
 
@@ -99,7 +117,6 @@ def relabel(img_seg):
 
     Returns:
         np.array: The relabeled array.
-
     """
     new_ID = 1
     for curr_ID in np.unique(img_seg)[1:]:
@@ -161,9 +178,11 @@ def segment(img, img_bg, img0_sigma=5, img0_min_size=300, img0_min_distance=50, 
 
     return img0_seg_clean, img0_nuclei
 
-####################
-# Colocalization #
-####################
+
+############################################################
+# Colocalization
+############################################################
+
 def extract_mask(img_mask, img_real, psf=3):
     """Returns a sliced image based on a image mask.
 
@@ -240,6 +259,7 @@ def scramble(blocks_1, blocks_2_flat, scrambles=10):
         r_scr (list): List of all scrambled pearson r values.
 
     """
+    import random
     r_scr = np.zeros(scrambles)
     if len(np.array(blocks_1).ravel()) < 2 or len(blocks_2_flat) < 2:
         return 0
@@ -365,6 +385,8 @@ def img2mask(img1, img2, roi):
         *image_measurements (dict): Measurements of each cluster.
 
     """
+    from sklearn.cluster import k_means
+    from scipy.signal import convolve2d
     cluster_measurements = False
     thresh = 'otsu' #or 'kmeans'
     thresh = [thresh, thresh, thresh]
@@ -501,9 +523,11 @@ def coloc_IF(img1, img2, roi):
 
     return IF_overlap_count, IF_overlap_area, IF1, IF1_area, IF2, IF2_area
 
-####################
-# Spot detection #
-####################
+
+############################################################
+# Spot detection
+############################################################
+
 def distance(point1, point2):
     """Returns distance between two points (x, y coordinates)
 
